@@ -267,8 +267,31 @@ jobs:
       - name: Build Alderis
         run: |
           cd Alderis
-          make clean package DEBUG=0 FINALPACKAGE=1 ARCHS=arm64
-          mv packages/*.deb ${{ github.workspace }}/alderis.deb
+
+          # Alderis' libcolorpicker links the private iOS Preferences framework.
+          # Some public/trimmed SDK bundles do not ship PrivateFrameworks/Preferences.framework,
+          # so create a tiny TBD stub to satisfy the linker during CI builds.
+          SDK_PATH="$THEOS/sdks/iPhoneOS18.6.sdk"
+          PREFS_DIR="$SDK_PATH/System/Library/PrivateFrameworks/Preferences.framework"
+          mkdir -p "$PREFS_DIR"
+
+          if [ ! -f "$PREFS_DIR/Preferences.tbd" ]; then
+            cat > "$PREFS_DIR/Preferences.tbd" <<'EOF'
+                 --- !tapi-tbd
+archs:           [ arm64, arm64e ]
+platform:        ios
+install-name:    /System/Library/PrivateFrameworks/Preferences.framework/Preferences
+current-version: 1
+compatibility-version: 1
+exports:
+  - archs:           [ arm64, arm64e ]
+    symbols:         [ _OBJC_CLASS_$_PSSpecifier, _OBJC_CLASS_$_PSTableCell, _OBJC_CLASS_$_PSListController, _OBJC_METACLASS_$_PSSpecifier, _OBJC_METACLASS_$_PSTableCell, _OBJC_METACLASS_$_PSListController ]
+...
+EOF
+          fi
+
+          make clean package DEBUG=0 FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless ARCHS=arm64
+                         mv packages/*.deb ${{ github.workspace }}/alderis.deb
 
       - name: Build YouChooseQuality
         run: |
